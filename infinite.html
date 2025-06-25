@@ -166,11 +166,38 @@
     .text-format-menu::-webkit-scrollbar-thumb:hover {
       background: rgba(102, 126, 234, 0.7);
     }
+    
+    /* Floating Scale Indicator */
+    #scale-indicator {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d3748;
+      z-index: 50;
+      min-width: 80px;
+      text-align: center;
+      transition: all 0.3s ease;
+      user-select: none;
+    }
+    #scale-indicator:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <div id="context-menu"><ul></ul></div>
+  <div id="scale-indicator">100%</div>
   <div id="text-format-menu" class="text-format-menu">
     <div class="format-group">
       <label>Font:</label>
@@ -210,6 +237,7 @@
     const contextMenu = document.getElementById('context-menu');
     const menuList = contextMenu.querySelector('ul');
     const textFormatMenu = document.getElementById('text-format-menu');
+    const scaleIndicator = document.getElementById('scale-indicator');
 
     let scale = 1, originX = 0, originY = 0;
     let isDragging = false, dragStart = { x:0, y:0 };
@@ -230,6 +258,10 @@
       draw();
     }
     
+    function updateScaleIndicator() {
+      scaleIndicator.textContent = Math.round(scale * 100) + '%';
+    }
+    
     function updateBackgroundColor() {
       document.body.style.background = backgroundColor;
       canvas.style.background = backgroundColor;
@@ -239,6 +271,7 @@
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
+    updateScaleIndicator();
     function toWorld(cx, cy) { return { x:(cx-originX)/scale, y:(cy-originY)/scale }; }
 
     function showContextMenu(px, py, wx, wy, hit) {
@@ -736,6 +769,7 @@
               scale = obj.scale || 1;
               backgroundColor = obj.backgroundColor || '#ffffff';
               updateBackgroundColor();
+              updateScaleIndicator();
               nextId = items.reduce((max, i) => Math.max(max, i.id), 0) + 1;
               draw();
               console.log('File loaded successfully');
@@ -914,7 +948,9 @@
       const cy = e.clientY - rect.top;
       originX = cx - (cx-originX) * (newScale/scale);
       originY = cy - (cy-originY) * (newScale/scale);
-      scale = newScale; draw();
+      scale = newScale; 
+      updateScaleIndicator();
+      draw();
     });
 
     canvas.addEventListener('dblclick', e => {
