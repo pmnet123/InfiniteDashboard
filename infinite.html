@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinite Dashboard with Rich Text</title>
+  <style>
+    html, body { 
+      margin: 0; padding: 0; overflow: hidden; height: 100%; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #ffffff;
+    }
+    #canvas { 
+      display: block; cursor: default; 
+      background: #ffffff;
+    }
+    
+    /* Modern Context Menu */
+    #context-menu { 
+      position: absolute; 
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      display: none; z-index: 10;
+      border-radius: 12px;
+      overflow: hidden;
+      min-width: 180px;
+    }
+    #context-menu ul { list-style: none; margin: 0; padding: 6px; }
+    #context-menu li { 
+      padding: 12px 16px; cursor: pointer; 
+      border-radius: 8px; margin: 2px 0;
+      font-weight: 500; font-size: 14px;
+      color: #2d3748;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    #context-menu li:hover { 
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      transform: translateX(2px);
+    }
+    #context-menu li::before {
+      content: '';
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #context-menu li:hover::before { opacity: 1; }
+    
+    /* Modern Text Editor */
+    .block-input { 
+      position: absolute; 
+      border: 2px solid rgba(102, 126, 234, 0.3);
+      border-radius: 12px;
+      overflow: auto;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-sizing: border-box; z-index: 100; 
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      outline: none; padding: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+    .block-input:focus {
+      border-color: #667eea;
+      box-shadow: 0 8px 30px rgba(102, 126, 234, 0.2);
+    }
+    
+    /* Modern Format Menu */
+    .text-format-menu { 
+      position: absolute; 
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+      display: none; z-index: 200;
+      padding: 16px; border-radius: 16px;
+      min-width: 280px;
+    }
+    .text-format-menu button { 
+      margin: 4px; padding: 8px 12px; 
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      cursor: pointer; border-radius: 8px;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+    }
+    .text-format-menu button:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+    }
+    .text-format-menu button:active { 
+      transform: translateY(0);
+    }
+    .text-format-menu select { 
+      margin: 4px; 
+      padding: 8px 12px;
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      border-radius: 8px;
+      background: white;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .text-format-menu select:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .text-format-menu input[type="color"] {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 4px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      transition: all 0.2s ease;
+    }
+    .text-format-menu input[type="color"]:hover {
+      transform: scale(1.1);
+    }
+    .format-group { 
+      margin: 8px 0; 
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 8px;
+    }
+    .format-group label { 
+      font-size: 12px; 
+      color: #4a5568; 
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+      display: block;
+    }
+    
+    /* Modern Scrollbars */
+    .block-input::-webkit-scrollbar,
+    .text-format-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+    .block-input::-webkit-scrollbar-track,
+    .text-format-menu::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.1);
+      border-radius: 3px;
+    }
+    .block-input::-webkit-scrollbar-thumb,
+    .text-format-menu::-webkit-scrollbar-thumb {
+      background: rgba(102, 126, 234, 0.5);
+      border-radius: 3px;
+    }
+    .block-input::-webkit-scrollbar-thumb:hover,
+    .text-format-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(102, 126, 234, 0.7);
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="context-menu"><ul></ul></div>
+  <div id="text-format-menu" class="text-format-menu">
+    <div class="format-group">
+      <label>Font:</label>
+      <select id="font-family">
+        <option value="Arial">Arial</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Courier New">Courier New</option>
+        <option value="Helvetica">Helvetica</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Verdana">Verdana</option>
+      </select>
+      <select id="font-size">
+        <option value="8">8px</option>
+        <option value="10">10px</option>
+        <option value="12">12px</option>
+        <option value="14">14px</option>
+        <option value="16">16px</option>
+        <option value="18" selected>18px</option>
+        <option value="20">20px</option>
+        <option value="24">24px</option>
+        <option value="28">28px</option>
+        <option value="32">32px</option>
+      </select>
+    </div>
+    <div class="format-group">
+      <button id="bold-btn"><b>B</b></button>
+      <button id="italic-btn"><i>I</i></button>
+      <button id="underline-btn"><u>U</u></button>
+      <input type="color" id="text-color" value="#000000" title="Text Color">
+    </div>
+  </div>
+  
+  <script>
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const contextMenu = document.getElementById('context-menu');
+    const menuList = contextMenu.querySelector('ul');
+    const textFormatMenu = document.getElementById('text-format-menu');
+
+    let scale = 1, originX = 0, originY = 0;
+    let isDragging = false, dragStart = { x:0, y:0 };
+    let resizing = false, resizeItem = null, resizeDir = '', resizeStart = {};
+    const minSize = 20, edgeThreshold = 10;
+    let items = [], nextId = 1;
+    let connecting = false, connectionStart = null;
+    let deletingConnector = false, deleteConnectionStart = null;
+    let selecting = false, selectedItem = null;
+    let rightClickTarget = null;
+    let currentEditor = null;
+    let textSelection = null;
+    let backgroundColor = '#ffffff'; // Store background color
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      draw();
+    }
+    
+    function updateBackgroundColor() {
+      document.body.style.background = backgroundColor;
+      canvas.style.background = backgroundColor;
+      // Force a complete redraw to update all contrast colors
+      console.log('Updating background to:', backgroundColor);
+      draw();
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    function toWorld(cx, cy) { return { x:(cx-originX)/scale, y:(cy-originY)/scale }; }
+
+    function showContextMenu(px, py, wx, wy, hit) {
+      menuList.innerHTML = '';
+      if (hit) {
+        rightClickTarget = hit;
+        if (hit.type === 'connector') {
+          // Special menu for connectors
+          ['Toggle Arrows','Toggle Dashed','Delete Connector','Save','Load'].forEach(text => {
+            const li = document.createElement('li'); li.textContent = text;
+            li.dataset.action = text.toLowerCase().replace(/ /g,'-');
+            menuList.appendChild(li);
+          });
+        } else {
+          // Regular block menu
+          ['Change Color','Copy Block','Delete Block','Save','Load'].forEach(text => {
+            const li = document.createElement('li'); li.textContent = text;
+            li.dataset.action = text.toLowerCase().replace(/ /g,'-');
+            menuList.appendChild(li);
+          });
+        }
+      } else {
+        rightClickTarget = null;
+        ['Save','Load','Add Colored Box','Add Connector','Delete Connector','Change Background Color'].forEach(text => {
+          const li = document.createElement('li'); li.textContent = text;
+          li.dataset.action = text.toLowerCase().replace(/ /g,'-');
+          menuList.appendChild(li);
+        });
+      }
+      contextMenu.style.left = px + 'px';
+      contextMenu.style.top = py + 'px';
+      contextMenu.style.display = 'block';
+      contextMenu.dataset.x = wx;
+      contextMenu.dataset.y = wy;
+    }
+    function hideContextMenu() { contextMenu.style.display = 'none'; }
+    function hideTextFormatMenu() { textFormatMenu.style.display = 'none'; }
+
+    // Text formatting functions
+    function showTextFormatMenu(x, y) {
+      textFormatMenu.style.left = x + 'px';
+      textFormatMenu.style.top = y + 'px';
+      textFormatMenu.style.display = 'block';
+    }
+
+    function applyTextFormat(command, value = null) {
+      if (!currentEditor) return;
+      
+      // Restore selection if it was lost
+      if (textSelection) {
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(textSelection);
+      }
+      
+      currentEditor.focus();
+      
+      // Enable CSS styling for better formatting
+      if (command === 'foreColor' || command === 'fontSize') {
+        document.execCommand('styleWithCSS', false, true);
+      }
+      
+      document.execCommand(command, false, value);
+      
+      // Save the current selection for future use
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        textSelection = selection.getRangeAt(0).cloneRange();
+      }
+    }
+
+    // Text format menu event listeners - prevent default and stop propagation
+    document.getElementById('bold-btn').addEventListener('mousedown', (e) => {
+      isUsingFormatControls = true;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.getElementById('bold-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      applyTextFormat('bold');
+      setTimeout(() => { isUsingFormatControls = false; }, 200);
+    });
+
+    document.getElementById('italic-btn').addEventListener('mousedown', (e) => {
+      isUsingFormatControls = true;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.getElementById('italic-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      applyTextFormat('italic');
+      setTimeout(() => { isUsingFormatControls = false; }, 200);
+    });
+
+    document.getElementById('underline-btn').addEventListener('mousedown', (e) => {
+      isUsingFormatControls = true;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    document.getElementById('underline-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      applyTextFormat('underline');
+      setTimeout(() => { isUsingFormatControls = false; }, 200);
+    });
+
+    document.getElementById('text-color').addEventListener('mousedown', () => {
+      isUsingFormatControls = true;
+    });
+    document.getElementById('text-color').addEventListener('input', (e) => {
+      if (currentEditor && textSelection) {
+        // Delay to ensure color picker is processed first
+        setTimeout(() => {
+          currentEditor.focus();
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(textSelection);
+          document.execCommand('styleWithCSS', false, true);
+          document.execCommand('foreColor', false, e.target.value);
+          if (selection.rangeCount > 0) {
+            textSelection = selection.getRangeAt(0).cloneRange();
+          }
+          setTimeout(() => { isUsingFormatControls = false; }, 200);
+        }, 10);
+      }
+    });
+
+    // Font family dropdown
+    document.getElementById('font-family').addEventListener('mousedown', () => {
+      isUsingFormatControls = true;
+    });
+    document.getElementById('font-family').addEventListener('change', (e) => {
+      if (currentEditor && textSelection) {
+        setTimeout(() => {
+          currentEditor.focus();
+          
+          // Get current selection
+          const selection = window.getSelection();
+          if (selection.rangeCount === 0) {
+            // Restore saved selection if no current selection
+            selection.removeAllRanges();
+            selection.addRange(textSelection);
+          }
+          
+          // Apply font family using direct style manipulation
+          const selectedText = selection.toString();
+          const fontFamily = e.target.value;
+          console.log('Applying font family:', fontFamily, 'to text:', selectedText);
+          
+          if (selectedText && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            
+            // Check if the selection is entirely within a single span with font family
+            const commonAncestor = range.commonAncestorContainer;
+            let existingSpan = null;
+            
+            // Find if we're inside a span with fontFamily style
+            if (commonAncestor.nodeType === Node.ELEMENT_NODE && commonAncestor.tagName === 'SPAN' && commonAncestor.style.fontFamily) {
+              existingSpan = commonAncestor;
+            } else if (commonAncestor.nodeType === Node.TEXT_NODE && commonAncestor.parentElement.tagName === 'SPAN' && commonAncestor.parentElement.style.fontFamily) {
+              existingSpan = commonAncestor.parentElement;
+            }
+            
+            console.log('Existing span found:', existingSpan ? existingSpan.style.fontFamily : 'none');
+            
+            try {
+              if (existingSpan && range.startContainer === range.endContainer && 
+                  range.startContainer.parentElement === existingSpan) {
+                // We're changing font family within an existing font-family span
+                console.log('Updating existing span font family from', existingSpan.style.fontFamily, 'to', fontFamily);
+                existingSpan.style.fontFamily = fontFamily;
+                
+                // Keep the selection as is
+                textSelection = range.cloneRange();
+                console.log('Updated existing span successfully');
+              } else {
+                // Create new span for the selection
+                const span = document.createElement('span');
+                span.style.fontFamily = fontFamily;
+                console.log('Created new span with fontFamily:', span.style.fontFamily);
+                
+                const contents = range.extractContents();
+                
+                // If the extracted contents contain spans with font families, preserve other styles but override font family
+                const spanElements = contents.querySelectorAll('span[style*="font-family"]');
+                spanElements.forEach(innerSpan => {
+                  console.log('Updating inner span font family from', innerSpan.style.fontFamily, 'to', fontFamily);
+                  innerSpan.style.fontFamily = fontFamily;
+                });
+                
+                span.appendChild(contents);
+                range.insertNode(span);
+                
+                // Select the new span
+                const newRange = document.createRange();
+                newRange.selectNodeContents(span);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+                textSelection = newRange.cloneRange();
+                
+                console.log('Created new span successfully');
+              }
+              
+              console.log('Font family applied successfully, final HTML:', currentEditor.innerHTML);
+            } catch (error) {
+              console.error('Error applying font family:', error);
+            }
+          }
+          
+          setTimeout(() => { isUsingFormatControls = false; }, 200);
+        }, 10);
+      }
+    });
+
+    // Font size dropdown
+    document.getElementById('font-size').addEventListener('mousedown', () => {
+      isUsingFormatControls = true;
+    });
+    document.getElementById('font-size').addEventListener('change', (e) => {
+      if (currentEditor && textSelection) {
+        setTimeout(() => {
+          currentEditor.focus();
+          
+          // Get current selection
+          const selection = window.getSelection();
+          if (selection.rangeCount === 0) {
+            // Restore saved selection if no current selection
+            selection.removeAllRanges();
+            selection.addRange(textSelection);
+          }
+          
+          // Apply font size using direct style manipulation
+          const selectedText = selection.toString();
+          const fontSize = parseInt(e.target.value);
+          console.log('Applying font size:', fontSize, 'to text:', selectedText);
+          
+          if (selectedText && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const span = document.createElement('span');
+            // Store the actual font size (not scaled) for consistency
+            span.style.fontSize = fontSize + 'px';
+            
+            try {
+              const contents = range.extractContents();
+              span.appendChild(contents);
+              range.insertNode(span);
+              
+              // Select the new span
+              const newRange = document.createRange();
+              newRange.selectNodeContents(span);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+              textSelection = newRange.cloneRange();
+              
+              console.log('Font size applied successfully, stored size:', span.style.fontSize);
+            } catch (error) {
+              console.error('Error applying font size:', error);
+            }
+          }
+          
+          setTimeout(() => { isUsingFormatControls = false; }, 200);
+        }, 10);
+      }
+    });
+
+    // Prevent format menu from causing blur when clicking on it
+    textFormatMenu.addEventListener('mousedown', (e) => {
+      // Only prevent default for buttons and other non-interactive elements
+      if (e.target.tagName === 'BUTTON') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+
+    // Hide format menu when clicking outside
+    document.addEventListener('mousedown', (e) => {
+      if (!textFormatMenu.contains(e.target) && e.target !== currentEditor) {
+        hideTextFormatMenu();
+      }
+    });
+
+    // Store reference to prevent blur when using format controls
+    let isUsingFormatControls = false;
+
+    // Encryption/Decryption functions using Web Crypto API
+    async function encryptData(data, password) {
+      try {
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+        const passwordBuffer = encoder.encode(password);
+        
+        // Create key from password
+        const keyMaterial = await crypto.subtle.importKey(
+          'raw',
+          passwordBuffer,
+          { name: 'PBKDF2' },
+          false,
+          ['deriveKey']
+        );
+        
+        // Generate salt
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        
+        // Derive key
+        const key = await crypto.subtle.deriveKey(
+          {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+          },
+          keyMaterial,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['encrypt']
+        );
+        
+        // Generate IV
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        
+        // Encrypt data
+        const encryptedBuffer = await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          dataBuffer
+        );
+        
+        // Combine salt, iv, and encrypted data
+        const combinedBuffer = new Uint8Array(salt.length + iv.length + encryptedBuffer.byteLength);
+        combinedBuffer.set(salt, 0);
+        combinedBuffer.set(iv, salt.length);
+        combinedBuffer.set(new Uint8Array(encryptedBuffer), salt.length + iv.length);
+        
+        // Convert to base64 and add prefix
+        const base64Data = btoa(String.fromCharCode(...combinedBuffer));
+        return 'ENCRYPTED:' + base64Data;
+      } catch (err) {
+        console.error('Encryption error:', err);
+        throw new Error('Encryption failed');
+      }
+    }
+
+    async function decryptData(encryptedData, password) {
+      try {
+        // Remove prefix and decode base64
+        const base64Data = encryptedData.replace('ENCRYPTED:', '');
+        const combinedBuffer = new Uint8Array(atob(base64Data).split('').map(c => c.charCodeAt(0)));
+        
+        // Extract salt, iv, and encrypted data
+        const salt = combinedBuffer.slice(0, 16);
+        const iv = combinedBuffer.slice(16, 28);
+        const encryptedBuffer = combinedBuffer.slice(28);
+        
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const passwordBuffer = encoder.encode(password);
+        
+        // Create key from password
+        const keyMaterial = await crypto.subtle.importKey(
+          'raw',
+          passwordBuffer,
+          { name: 'PBKDF2' },
+          false,
+          ['deriveKey']
+        );
+        
+        // Derive key using same salt
+        const key = await crypto.subtle.deriveKey(
+          {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+          },
+          keyMaterial,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['decrypt']
+        );
+        
+        // Decrypt data
+        const decryptedBuffer = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: iv },
+          key,
+          encryptedBuffer
+        );
+        
+        return decoder.decode(decryptedBuffer);
+      } catch (err) {
+        console.error('Decryption error:', err);
+        throw new Error('Decryption failed');
+      }
+    }
+
+    contextMenu.addEventListener('click', async e => {
+      const li = e.target.closest('li'); if (!li) return;
+      const action = li.dataset.action;
+      const target = rightClickTarget;
+      const wx = parseFloat(contextMenu.dataset.x);
+      const wy = parseFloat(contextMenu.dataset.y);
+      hideContextMenu();
+
+      if (action === 'save') {
+        try {
+          // Check if file picker is available first
+          if (!('showSaveFilePicker' in window)) {
+            alert('File picker not supported in this browser. Please use Chrome, Edge, or Safari.');
+            return;
+          }
+
+          // Ask for encryption password
+          const password = prompt('Enter password for encryption (leave blank for no encryption):');
+          if (password === null) {
+            return; // User cancelled password prompt
+          }
+          
+          const data = JSON.stringify({ items, originX, originY, scale, backgroundColor });
+          
+          // Get file handle (REQUIRED - no fallback)
+          let fileHandle;
+          try {
+            fileHandle = await window.showSaveFilePicker({
+              suggestedName: 'dashboard.json',
+              types: [{
+                description: 'JSON files',
+                accept: { 'application/json': ['.json'] }
+              }]
+            });
+          } catch (err) {
+            if (err.name === 'AbortError') {
+              console.log('Save cancelled by user');
+              return; // User cancelled file picker
+            }
+            throw new Error('File picker failed: ' + err.message);
+          }
+          
+          // Now encrypt if needed
+          let finalData = data;
+          let isEncrypted = false;
+          if (password && password.trim()) {
+            console.log('Encrypting data...');
+            finalData = await encryptData(data, password.trim());
+            isEncrypted = true;
+          }
+          
+          // Save the data using file picker
+          const writable = await fileHandle.createWritable();
+          await writable.write(finalData);
+          await writable.close();
+          console.log(`File saved successfully${isEncrypted ? ' (encrypted)' : ' (unencrypted)'}`);
+          
+        } catch (err) {
+          console.error('Save operation failed:', err);
+          alert('Save failed: ' + err.message);
+        }
+      }
+      else if (action === 'load') {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = 'application/json';
+        input.style.display = 'none'; document.body.appendChild(input);
+        input.onchange = async evt => {
+          const file = input.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = async evt => {
+            try {
+              const fileContent = evt.target.result;
+              let obj;
+              
+              // Check if file is encrypted (starts with "ENCRYPTED:")
+              if (fileContent.startsWith('ENCRYPTED:')) {
+                const password = prompt('Enter password to decrypt the file:');
+                if (!password) {
+                  alert('Password required to decrypt file.');
+                  return;
+                }
+                try {
+                  const decryptedData = await decryptData(fileContent, password.trim());
+                  obj = JSON.parse(decryptedData);
+                } catch (decryptErr) {
+                  console.error('Decryption failed:', decryptErr);
+                  alert('Decryption failed. Wrong password or corrupted file.');
+                  return;
+                }
+              } else {
+                // Unencrypted file
+                obj = JSON.parse(fileContent);
+              }
+              
+              items = obj.items || [];
+              originX = obj.originX || 0;
+              originY = obj.originY || 0;
+              scale = obj.scale || 1;
+              backgroundColor = obj.backgroundColor || '#ffffff';
+              updateBackgroundColor();
+              nextId = items.reduce((max, i) => Math.max(max, i.id), 0) + 1;
+              draw();
+              console.log('File loaded successfully');
+            } catch (err) {
+              console.error('Invalid file:', err);
+              alert('Invalid file format.');
+            }
+          };
+          reader.readAsText(file);
+          input.remove();
+        };
+        input.click();
+      }
+      else if (action === 'change-color' && target) {
+        const input = document.createElement('input'); input.type = 'color';
+        input.value = /^#([0-9A-F]{3}){1,2}$/i.test(target.color) ? target.color : '#ffffff';
+        input.style.position = 'fixed'; input.style.left = contextMenu.style.left;
+        input.style.top = contextMenu.style.top; input.style.zIndex = 100;
+        document.body.appendChild(input); input.click();
+        input.addEventListener('change', ev => { target.color = ev.target.value; draw(); input.remove(); });
+      }
+      else if (action === 'copy-block' && target) {
+        copyBlock(target);
+      }
+      else if (action === 'delete-block' && target) {
+        // Confirmation prompt for safety
+        const confirmDelete = confirm(`Are you sure you want to delete this block and all its connections?\n\nThis action cannot be undone.`);
+        if (confirmDelete) {
+          deleteBlock(target.id);
+        }
+      }
+      else if (action === 'toggle-arrows' && target && target.type === 'connector') {
+        // Handle undefined as true (default behavior for backward compatibility)
+        target.hasArrows = (target.hasArrows !== false) ? false : true;
+        console.log(`Connector ${target.id} arrows toggled to:`, target.hasArrows);
+        draw();
+      }
+      else if (action === 'toggle-dashed' && target && target.type === 'connector') {
+        target.isDashed = !target.isDashed;
+        console.log(`Connector ${target.id} dashed style toggled to:`, target.isDashed);
+        draw();
+      }
+      else if (action === 'delete-connector' && target && target.type === 'connector') {
+        const confirmDelete = confirm(`Are you sure you want to delete this connector?\n\nThis action cannot be undone.`);
+        if (confirmDelete) {
+          const connectorIndex = items.findIndex(item => item.id === target.id);
+          if (connectorIndex !== -1) {
+            items.splice(connectorIndex, 1);
+            console.log('Connector deleted:', target.id);
+            draw();
+          }
+        }
+      }
+      else if (action === 'add-colored-box') addRect(wx, wy);
+      else if (action === 'add-connector') startConnector();
+      else if (action === 'delete-connector') startDeleteConnector();
+      else if (action === 'change-background-color') {
+        const input = document.createElement('input'); 
+        input.type = 'color';
+        input.value = backgroundColor;
+        input.style.position = 'fixed'; 
+        input.style.left = contextMenu.style.left;
+        input.style.top = contextMenu.style.top; 
+        input.style.zIndex = 100;
+        document.body.appendChild(input); 
+        input.click();
+        input.addEventListener('change', ev => { 
+          backgroundColor = ev.target.value; 
+          console.log('Background color changed to:', backgroundColor);
+          updateBackgroundColor();
+          input.remove(); 
+        });
+      }
+
+      rightClickTarget = null;
+    });
+    
+    document.addEventListener('mousedown', e => {
+      if (e.button === 0 && !contextMenu.contains(e.target) && !textFormatMenu.contains(e.target)) {
+        hideContextMenu();
+        hideTextFormatMenu();
+      }
+    });
+
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 2) {
+        const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
+        const hit = findItem(mx, my);
+        showContextMenu(e.clientX, e.clientY, mx, my, hit);
+        return;
+      }
+      const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
+      if (connecting) {
+        const hit = findItem(mx, my);
+        if (hit) {
+          if (!connectionStart) connectionStart = hit.id;
+          else { 
+            items.push({ 
+              id: nextId++, 
+              type: 'connector', 
+              from: connectionStart, 
+              to: hit.id,
+              hasArrows: true, // Default with arrows
+              isDashed: false  // Default solid line
+            }); 
+            connecting = false; 
+            draw(); 
+          }
+        }
+        return;
+      }
+      if (deletingConnector) {
+        const hit = findItem(mx, my);
+        if (hit) {
+          if (!deleteConnectionStart) {
+            deleteConnectionStart = hit.id;
+          } else {
+            // Find and delete connector between the two selected boxes
+            const connectorIndex = items.findIndex(item => 
+              item.type === 'connector' && 
+              ((item.from === deleteConnectionStart && item.to === hit.id) ||
+               (item.from === hit.id && item.to === deleteConnectionStart))
+            );
+            if (connectorIndex !== -1) {
+              items.splice(connectorIndex, 1);
+              console.log('Connector deleted between boxes', deleteConnectionStart, 'and', hit.id);
+            } else {
+              console.log('No connector found between boxes', deleteConnectionStart, 'and', hit.id);
+            }
+            deletingConnector = false;
+            deleteConnectionStart = null;
+            draw();
+          }
+        }
+        return;
+      }
+      const edge = findEdge(mx, my);
+      if (edge) {
+        resizing = true; resizeItem = edge.item; resizeDir = edge.dir;
+        resizeStart = { x:mx, y:my, w:edge.item.w, h:edge.item.h };
+        return;
+      }
+      const hit2 = findItem(mx, my);
+      if (hit2) {
+        selectedItem = hit2; selecting = true;
+        dragStart = { x:mx - hit2.x, y:my - hit2.y };
+      } else {
+        selecting = false; isDragging = true;
+        dragStart = { x:e.clientX - originX, y:e.clientY - originY };
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
+      if (resizing && resizeItem) {
+        const dx = mx - resizeStart.x, dy = my - resizeStart.y;
+        if (resizeDir.includes('e')) resizeItem.w = Math.max(minSize, resizeStart.w + dx);
+        if (resizeDir.includes('s')) resizeItem.h = Math.max(minSize, resizeStart.h + dy);
+        draw(); return;
+      }
+      if (selecting && selectedItem) {
+        selectedItem.x = mx - dragStart.x; selectedItem.y = my - dragStart.y; draw(); return;
+      }
+      if (isDragging) {
+        originX = e.clientX - dragStart.x; originY = e.clientY - dragStart.y; draw(); return;
+      }
+      canvas.style.cursor = findEdge(mx, my) ? 'nwse-resize' : 'default';
+    });
+    canvas.addEventListener('mouseup', () => { isDragging=false; selecting=false; resizing=false; });
+    canvas.addEventListener('mouseleave', () => { isDragging=false; selecting=false; resizing=false; });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault(); const delta = -e.deltaY * 0.001;
+      const newScale = Math.min(Math.max(0.2, scale + delta), 5);
+      const rect = canvas.getBoundingClientRect(); const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      originX = cx - (cx-originX) * (newScale/scale);
+      originY = cy - (cy-originY) * (newScale/scale);
+      scale = newScale; draw();
+    });
+
+    canvas.addEventListener('dblclick', e => {
+      const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
+      const hit = items.slice().reverse().find(it=>it.type==='rect'&&mx>=it.x&&mx<=it.x+it.w&&my>=it.y&&my<=it.y+it.h);
+      if (!hit) return;
+      
+      // Remove any existing editor
+      const existing = document.querySelector('.block-input'); 
+      if(existing) existing.remove();
+      
+      // Create rich text editor
+      const editor = document.createElement('div'); 
+      editor.className = 'block-input';
+      editor.contentEditable = true;
+      editor.style.left = (originX + hit.x * scale) + 'px'; 
+      editor.style.top = (originY + hit.y * scale) + 'px';
+      editor.style.width = (hit.w * scale) + 'px'; 
+      editor.style.height = (hit.h * scale) + 'px';
+      editor.style.backgroundColor = hit.color; // Match block background color
+      editor.style.fontSize = (18 * scale) + 'px'; // Scale default font size to match canvas
+      editor.innerHTML = hit.richText || hit.text || '';
+      
+      // Scale all existing font sizes in the content to match current zoom for editing
+      const spans = editor.querySelectorAll('span[style*="font-size"]');
+      spans.forEach(span => {
+        const currentSize = parseInt(span.style.fontSize);
+        if (currentSize) {
+          // Scale up for editing to match visual appearance
+          span.style.fontSize = (currentSize * scale) + 'px';
+        }
+      });
+      
+      // Prevent wheel events from affecting canvas
+      editor.addEventListener('wheel', ev => ev.stopPropagation());
+      
+      // Handle text selection and right-click for formatting
+      editor.addEventListener('mouseup', () => {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0 && !selection.isCollapsed) {
+          textSelection = selection.getRangeAt(0).cloneRange();
+        }
+      });
+      
+      editor.addEventListener('keyup', () => {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0 && !selection.isCollapsed) {
+          textSelection = selection.getRangeAt(0).cloneRange();
+        }
+      });
+      
+      editor.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0 && !selection.isCollapsed) {
+          textSelection = selection.getRangeAt(0).cloneRange();
+          showTextFormatMenu(ev.clientX, ev.clientY);
+        }
+      });
+      
+      document.body.appendChild(editor); 
+      editor.focus();
+      currentEditor = editor;
+      
+              // Save when focus is lost (but not when using format controls)
+        editor.addEventListener('blur', (e) => {
+          // Delay to allow format controls to work
+          setTimeout(() => {
+            if (!isUsingFormatControls && currentEditor === editor) {
+              console.log('Saving editor content, scaling factor:', scale);
+              
+              // Unscale font sizes before saving to maintain original values
+              const spans = editor.querySelectorAll('span[style]');
+              console.log('Found', spans.length, 'styled spans');
+              spans.forEach(span => {
+                console.log('Span styles before save:', {
+                  fontSize: span.style.fontSize,
+                  fontFamily: span.style.fontFamily,
+                  color: span.style.color,
+                  fontWeight: span.style.fontWeight,
+                  fontStyle: span.style.fontStyle,
+                  textDecoration: span.style.textDecoration
+                });
+                
+                const currentSize = parseInt(span.style.fontSize);
+                if (currentSize) {
+                  const originalSize = Math.round(currentSize / scale);
+                  console.log('Unscaling font size from', currentSize, 'to', originalSize);
+                  span.style.fontSize = originalSize + 'px';
+                }
+              });
+              
+              hit.richText = editor.innerHTML;
+              hit.text = editor.textContent || editor.innerText; // Fallback for plain text rendering
+              console.log('Saved richText:', hit.richText);
+              editor.remove(); 
+              currentEditor = null;
+              hideTextFormatMenu();
+              draw(); 
+            }
+          }, 150);
+        });
+    });
+
+    function addRect(x,y){ 
+      // Windows tile-style color palette
+      const modernColors = [
+        '#0078d4', '#107c10', '#ffb900', '#d13438', 
+        '#8764b8', '#00bcf2', '#038387', '#e3008c',
+        '#881798', '#498205', '#ca5010', '#8e562e',
+        '#525e75', '#567c73', '#486860', '#744da9'
+      ];
+      const randomColor = modernColors[Math.floor(Math.random() * modernColors.length)];
+      
+      items.push({ 
+        id: nextId++, 
+        type: 'rect', 
+        x, y, w:150, h:100, 
+        color: randomColor, 
+        text: '', 
+        richText: '' 
+      }); 
+      draw(); 
+    }
+
+    function copyBlock(originalBlock) {
+      // Create a copy of the block with same properties but new ID and position
+      const copiedBlock = {
+        id: nextId++,
+        type: 'rect',
+        x: originalBlock.x, // Same x position
+        y: originalBlock.y + originalBlock.h + 20, // Position below with 20px gap
+        w: originalBlock.w, // Same width
+        h: originalBlock.h, // Same height
+        color: originalBlock.color, // Same background color
+        text: originalBlock.text || '', // Copy plain text content
+        richText: originalBlock.richText || '' // Copy rich text content
+      };
+      
+      items.push(copiedBlock);
+      draw();
+      
+      console.log(`Block ${originalBlock.id} copied as new block ${copiedBlock.id}`);
+    }
+    
+    function startConnector(){ connecting = true; connectionStart = null; }
+    function startDeleteConnector(){ deletingConnector = true; deleteConnectionStart = null; }
+    
+    function deleteBlock(blockId) {
+      // First, find and remove all connectors connected to this block
+      const connectedConnectors = items.filter(item => 
+        item.type === 'connector' && (item.from === blockId || item.to === blockId)
+      );
+      
+      // Remove the connectors
+      items = items.filter(item => 
+        !(item.type === 'connector' && (item.from === blockId || item.to === blockId))
+      );
+      
+      // Remove the block itself
+      const blockIndex = items.findIndex(item => item.id === blockId);
+      if (blockIndex !== -1) {
+        items.splice(blockIndex, 1);
+      }
+      
+      // Log the deletion for feedback
+      console.log(`Deleted block ${blockId} and ${connectedConnectors.length} connected connector(s)`);
+      
+      // Redraw the canvas
+      draw();
+    }
+    
+    function findItem(x,y){ 
+      // Check rectangles first
+      const rect = items.slice().reverse().find(it=>it.type==='rect'&&x>=it.x&&x<=it.x+it.w&&y>=it.y&&y<=it.y+it.h);
+      if (rect) return rect;
+      
+      // Check connectors (with some tolerance for clicking on lines)
+      const tolerance = 10 / scale; // 10 pixel tolerance scaled to world coordinates
+      for (let i = items.length - 1; i >= 0; i--) {
+        const connector = items[i];
+        if (connector.type !== 'connector') continue;
+        
+        const fromItem = items.find(it => it.id === connector.from);
+        const toItem = items.find(it => it.id === connector.to);
+        if (!fromItem || !toItem) continue;
+        
+        const [ax, ay] = getCenter(fromItem);
+        const [bx, by] = getCenter(toItem);
+        
+        // Calculate distance from point to line segment
+        const lineLength = Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
+        const t = Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / (lineLength ** 2)));
+        const projX = ax + t * (bx - ax);
+        const projY = ay + t * (by - ay);
+        const distance = Math.sqrt((x - projX) ** 2 + (y - projY) ** 2);
+        
+        if (distance <= tolerance) {
+          return connector;
+        }
+      }
+      
+      return null; 
+    }
+    function findEdge(x,y){ for(let i=items.length-1;i>=0;i--){ const it=items[i]; if(it.type!=='rect') continue; const tol=edgeThreshold/scale; const onE=Math.abs(x-(it.x+it.w))<tol&&y>=it.y&&y<=it.y+it.h; const onS=Math.abs(y-(it.y+it.h))<tol&&x>=it.x&&x<=it.x+it.w; if(onE&&onS) return{item:it,dir:'se'}; if(onE) return{item:it,dir:'e'}; if(onS) return{item:it,dir:'s'}; } return null; }
+    function getCenter(it){return[it.x+it.w/2,it.y+it.h/2];}
+    
+    // Helper function to adjust color brightness
+    function adjustBrightness(color, percent) {
+      const num = parseInt(color.replace("#",""), 16);
+      const amt = Math.round(2.55 * percent);
+      const R = (num >> 16) + amt;
+      const G = (num >> 8 & 0x00FF) + amt;
+      const B = (num & 0x0000FF) + amt;
+      return "#" + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+        (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+    }
+    
+    // Helper function to get contrasting color based on background
+    function getContrastColor(bgColor) {
+      // Convert hex to RGB
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      // Calculate luminance
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      
+      // Return dark color for light backgrounds, light color for dark backgrounds
+      const contrastColor = luminance > 0.5 ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.6)';
+      console.log('Border contrast for', bgColor, ':', contrastColor, 'luminance:', luminance);
+      return contrastColor;
+    }
+    
+    // Helper function to get contrasting color for grid lines
+    function getGridContrastColor(bgColor) {
+      // Convert hex to RGB
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      // Calculate luminance
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      
+      // Return subtle contrasting grid color
+      const gridColor = luminance > 0.5 ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.2)';
+      console.log('Grid contrast for', bgColor, ':', gridColor, 'luminance:', luminance);
+      return gridColor;
+    }
+    
+    // Helper function to get contrasting color for connectors
+    function getConnectorContrastColor(bgColor) {
+      // Convert hex to RGB
+      const hex = bgColor.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      // Calculate luminance
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      
+      // Return colors that contrast well with background
+      let colors;
+      if (luminance > 0.5) {
+        // Light background - use much darker colors
+        colors = {
+          start: 'rgba(30, 40, 100, 0.9)',
+          end: 'rgba(50, 20, 80, 0.9)',
+          arrow: '#1e2864'
+        };
+      } else {
+        // Dark background - use much lighter colors
+        colors = {
+          start: 'rgba(150, 170, 255, 0.95)',
+          end: 'rgba(180, 150, 255, 0.95)',
+          arrow: '#96aaff'
+        };
+      }
+      console.log('Connector contrast for', bgColor, ':', colors, 'luminance:', luminance);
+      return colors;
+    }
+    function drawGrid() { 
+      const grid = 100; 
+      const w = canvas.width / scale, h = canvas.height / scale; 
+      const sx = -originX / scale, sy = -originY / scale; 
+      
+      ctx.beginPath(); 
+      ctx.strokeStyle = getGridContrastColor(backgroundColor); 
+      ctx.lineWidth = 1 / scale; 
+      for(let x = Math.floor(sx / grid) * grid; x < sx + w; x += grid) { 
+        ctx.moveTo(x, sy); 
+        ctx.lineTo(x, sy + h); 
+      } 
+      for(let y = Math.floor(sy / grid) * grid; y < sy + h; y += grid) { 
+        ctx.moveTo(sx, y); 
+        ctx.lineTo(sx + w, y); 
+      } 
+      ctx.stroke(); 
+    }
+    
+    // Enhanced text rendering function for rich text
+    function renderTextInBlock(item) {
+      if (!item.richText && !item.text) return;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(item.x, item.y, item.w, item.h);
+      ctx.clip();
+      
+      if (item.richText) {
+        // Parse and render rich text with formatting
+        renderRichText(item.richText, item.x + 2/scale, item.y + 2/scale, item.w - 4/scale, item.h - 4/scale);
+      } else {
+        // Fallback to plain text
+        ctx.fillStyle = '#000';
+        ctx.font = `${18/scale}px Arial`;
+        const lines = item.text.split('\n');
+        const lineHeight = 21/scale;
+        lines.forEach((line, idx) => {
+          ctx.fillText(line, item.x + 2/scale, item.y + 2/scale + (idx + 1) * lineHeight);
+        });
+      }
+      
+      ctx.restore();
+    }
+
+    function renderRichText(html, x, y, maxWidth, maxHeight) {
+      // Create a temporary div to parse the HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      
+      let currentY = y;
+      
+      // Walk through the DOM tree and render each text node with its styling
+      function walkNodes(node, inheritedStyle = {}) {
+        if (currentY > y + maxHeight) return; // Stop if we exceed the box height
+        
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent;
+          if (text.trim()) {
+            // Apply inherited and current styling
+            const style = { ...inheritedStyle };
+            let parent = node.parentElement;
+            
+            // Collect styles from parent elements
+            while (parent && parent !== tempDiv) {
+              if (parent.tagName === 'B' || parent.tagName === 'STRONG') style.bold = true;
+              if (parent.tagName === 'I' || parent.tagName === 'EM') style.italic = true;
+              if (parent.tagName === 'U') style.underline = true;
+              if (parent.style.color) style.color = parent.style.color;
+              if (parent.style.fontSize) style.fontSize = parent.style.fontSize;
+              if (parent.style.fontFamily) {
+                console.log('Found fontFamily in HTML:', parent.style.fontFamily, 'from element:', parent.tagName);
+                // Clean up font family name and handle multiple fonts
+                let fontFamily = parent.style.fontFamily.replace(/['"]/g, ''); // Remove quotes
+                // If it's a comma-separated list, take the first available font
+                fontFamily = fontFamily.split(',')[0].trim();
+                style.fontFamily = fontFamily;
+                console.log('Processed fontFamily:', fontFamily);
+              }
+              parent = parent.parentElement;
+            }
+            
+            // Set up canvas styling - scale font size to match current zoom level
+            const baseFontSize = 18; // Default base font size
+            const storedFontSize = style.fontSize ? parseInt(style.fontSize) : baseFontSize;
+            const actualFontSize = storedFontSize / scale; // Scale down because canvas is already scaled up
+            const fontFamily = style.fontFamily || 'Arial';
+            const fontWeight = style.bold ? 'bold' : 'normal';
+            const fontStyle = style.italic ? 'italic' : 'normal';
+            
+            // Calculate dynamic line height based on actual font size with some padding
+            const dynamicLineHeight = actualFontSize * 1.4; // 1.4 is a good line height multiplier
+            
+            // Debug font application
+            console.log('Applying canvas font:', {
+              text: text.trim().substring(0, 20) + '...',
+              fontFamily: fontFamily,
+              fontSize: actualFontSize,
+              fontWeight: fontWeight,
+              fontStyle: fontStyle,
+              color: style.color || '#000'
+            });
+            
+            ctx.font = `${fontStyle} ${fontWeight} ${actualFontSize}px "${fontFamily}"`;
+            ctx.fillStyle = style.color || '#000';
+            
+            // Handle line breaks and word wrapping
+            const words = text.split(/(\s+)/); // Split but keep spaces
+            let currentLine = '';
+            let currentX = x;
+            let maxLineHeight = actualFontSize; // Track the tallest font in this line
+            
+            for (let word of words) {
+              if (word.match(/^\s+$/)) {
+                // Handle spaces
+                currentLine += word;
+                continue;
+              }
+              
+              const testLine = currentLine + word;
+              const metrics = ctx.measureText(testLine);
+              
+              if (metrics.width > maxWidth && currentLine.trim()) {
+                // Draw current line and move to next
+                ctx.fillText(currentLine, currentX, currentY + maxLineHeight);
+                if (style.underline) {
+                  ctx.beginPath();
+                  ctx.moveTo(currentX, currentY + maxLineHeight + 2);
+                  ctx.lineTo(currentX + ctx.measureText(currentLine).width, currentY + maxLineHeight + 2);
+                  ctx.strokeStyle = style.color || '#000';
+                  ctx.lineWidth = 1;
+                  ctx.stroke();
+                }
+                currentLine = word;
+                currentY += dynamicLineHeight;
+                currentX = x;
+                maxLineHeight = actualFontSize;
+                if (currentY > y + maxHeight) break;
+              } else {
+                currentLine = testLine;
+                maxLineHeight = Math.max(maxLineHeight, actualFontSize);
+              }
+            }
+            
+            // Draw remaining text
+            if (currentLine.trim() && currentY <= y + maxHeight) {
+              ctx.fillText(currentLine, currentX, currentY + maxLineHeight);
+              if (style.underline) {
+                ctx.beginPath();
+                ctx.moveTo(currentX, currentY + maxLineHeight + 2);
+                ctx.lineTo(currentX + ctx.measureText(currentLine).width, currentY + maxLineHeight + 2);
+                ctx.strokeStyle = style.color || '#000';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              }
+              // Only advance Y if we drew text (for spacing to next element)
+              if (currentLine.trim()) {
+                currentY += dynamicLineHeight;
+              }
+            }
+          }
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          // Handle element nodes (tags)
+          const style = { ...inheritedStyle };
+          
+          // Handle line breaks - use font size aware spacing
+          if (node.tagName === 'BR') {
+            const elementFontSize = style.fontSize ? parseInt(style.fontSize) : 12;
+            currentY += elementFontSize * 1.4;
+          } else if (node.tagName === 'DIV' && node.previousSibling) {
+            // Add spacing before div elements (except the first one)
+            const elementFontSize = style.fontSize ? parseInt(style.fontSize) : 12;
+            currentY += elementFontSize * 0.6; // Smaller spacing between divs
+          }
+          
+          // Process child nodes
+          for (let child of node.childNodes) {
+            walkNodes(child, style);
+          }
+        }
+      }
+      
+      walkNodes(tempDiv);
+    }
+    
+    function draw(){ 
+      ctx.setTransform(1,0,0,1,0,0); 
+      ctx.clearRect(0,0,canvas.width,canvas.height); 
+      ctx.translate(originX,originY); 
+      ctx.scale(scale,scale); 
+      drawGrid(); 
+      
+      // Draw modern connectors with customizable arrows and line styles
+      items.filter(i=>i.type==='connector').forEach(c=>{ 
+        const a=items.find(i=>i.id===c.from),b=items.find(i=>i.id===c.to); 
+        if(a&&b){ 
+          const[ax,ay]=getCenter(a),[bx,by]=getCenter(b); 
+          
+          // Get contrasting colors based on background
+          const connectorColors = getConnectorContrastColor(backgroundColor);
+          
+          // Draw gradient line with dynamic colors and optional dashed style
+          const gradient = ctx.createLinearGradient(ax, ay, bx, by);
+          gradient.addColorStop(0, connectorColors.start);
+          gradient.addColorStop(1, connectorColors.end);
+          
+          ctx.beginPath(); 
+          ctx.moveTo(ax,ay); 
+          ctx.lineTo(bx,by); 
+          ctx.lineWidth=2/scale; 
+          ctx.strokeStyle=gradient; 
+          ctx.lineCap = 'round';
+          
+          // Set line dash pattern if connector is dashed
+          if (c.isDashed) {
+            ctx.setLineDash([8/scale, 6/scale]); // Dashed pattern scaled to zoom
+          } else {
+            ctx.setLineDash([]); // Solid line
+          }
+          
+          ctx.stroke(); 
+          
+          // Reset line dash for arrows
+          ctx.setLineDash([]);
+          
+          // Draw arrow heads at 1/3 and 2/3 of the line (only if hasArrows is true)
+          if (c.hasArrows !== false) { // Default to true for backward compatibility (undefined or true)
+            const angle = Math.atan2(by - ay, bx - ax);
+            const arrowLength = 12 / scale;
+            const arrowAngle = Math.PI / 6;
+            
+            for(let i = 1; i <= 2; i++) {
+              const t = i / 3; // 1/3 and 2/3 positions
+              const arrowX = ax + (bx - ax) * t;
+              const arrowY = ay + (by - ay) * t;
+              
+              ctx.beginPath();
+              ctx.moveTo(arrowX, arrowY);
+              ctx.lineTo(
+                arrowX - arrowLength * Math.cos(angle - arrowAngle),
+                arrowY - arrowLength * Math.sin(angle - arrowAngle)
+              );
+              ctx.moveTo(arrowX, arrowY);
+              ctx.lineTo(
+                arrowX - arrowLength * Math.cos(angle + arrowAngle),
+                arrowY - arrowLength * Math.sin(angle + arrowAngle)
+              );
+              ctx.lineWidth = 2 / scale;
+              ctx.strokeStyle = connectorColors.arrow;
+              ctx.stroke();
+            }
+          }
+        } 
+      }); 
+      
+      // Draw clean Windows tile-style rectangles
+      items.filter(i=>i.type==='rect').forEach(it=>{ 
+        const radius = 8 / scale; // Slightly smaller radius for cleaner look
+        
+        // Draw subtle shadow
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+        ctx.shadowBlur = 8 / scale;
+        ctx.shadowOffsetX = 2 / scale;
+        ctx.shadowOffsetY = 2 / scale;
+        
+        // Create rounded rectangle path
+        ctx.beginPath();
+        ctx.roundRect(it.x, it.y, it.w, it.h, radius);
+        
+        // Solid mono color fill (no gradient)
+        ctx.fillStyle = it.color;
+        ctx.fill();
+        
+        // Reset shadow for border
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        
+        // Dynamic contrasting border
+        ctx.strokeStyle = getContrastColor(backgroundColor); 
+        ctx.lineWidth = 1.5 / scale; 
+        ctx.stroke();
+        
+        ctx.restore();
+        
+        // Render text
+        renderTextInBlock(it);
+      }); 
+    }
+  </script>
+</body>
+</html>
