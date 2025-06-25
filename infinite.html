@@ -371,12 +371,19 @@
     let currentSearchIndex = -1;
     let searchTerm = '';
     let highlightedBlocks = new Set();
+    
+    // Undo functionality state
+    let undoStack = [];
+    let maxUndoSteps = 10; // Limit undo history to prevent memory issues
 
     /* ==================== INITIALIZATION ==================== */
     function initializeApp() {
       resizeCanvas();
       updateScaleIndicator();
       setupEventListeners();
+      
+      // Save initial state for undo functionality
+      saveState('Initial state');
     }
 
     function resizeCanvas() {
@@ -574,6 +581,65 @@
       draw();
     }
 
+    /* ==================== UNDO FUNCTIONALITY ==================== */
+    function saveState(actionDescription) {
+      // Create a deep copy of the current state
+      const state = {
+        items: JSON.parse(JSON.stringify(items)),
+        nextId: nextId,
+        originX: originX,
+        originY: originY,
+        scale: scale,
+        backgroundColor: backgroundColor,
+        description: actionDescription,
+        timestamp: Date.now()
+      };
+      
+      undoStack.push(state);
+      
+      // Limit undo stack size to prevent memory issues
+      if (undoStack.length > maxUndoSteps) {
+        undoStack.shift(); // Remove oldest entry
+      }
+      
+      console.log(`State saved: ${actionDescription} (${undoStack.length} states in history)`);
+    }
+
+    function performUndo() {
+      if (undoStack.length === 0) {
+        console.log('No actions to undo');
+        return;
+      }
+      
+      const previousState = undoStack.pop();
+      
+      // Restore the previous state
+      items = JSON.parse(JSON.stringify(previousState.items));
+      nextId = previousState.nextId;
+      originX = previousState.originX;
+      originY = previousState.originY;
+      scale = previousState.scale;
+      backgroundColor = previousState.backgroundColor;
+      
+      // Update UI elements
+      updateBackgroundColor();
+      updateScaleIndicator();
+      
+      // Clear search results if any
+      if (highlightedBlocks.size > 0) {
+        hideSearchBar();
+      }
+      
+      draw();
+      
+      console.log(`Undid action: ${previousState.description} (${undoStack.length} states remaining)`);
+    }
+
+    function clearUndoHistory() {
+      undoStack = [];
+      console.log('Undo history cleared');
+    }
+
     /* ==================== EVENT HANDLERS ==================== */
     function handleGlobalKeyboard(e) {
       if (e.ctrlKey && e.key === 'f') {
@@ -589,6 +655,9 @@
         } else {
           goToNextResult();
         }
+      } else if (e.ctrlKey && e.key === 'z' && !currentEditor) {
+        e.preventDefault();
+        performUndo();
       }
     }
 
@@ -607,6 +676,7 @@
         if (hit) {
           if (!connectionStart) connectionStart = hit.id;
           else { 
+            saveState('Add connector');
             items.push({ 
               id: nextId++, 
               type: 'connector', 
@@ -634,6 +704,7 @@
                (item.from === hit.id && item.to === deleteConnectionStart))
             );
             if (connectorIndex !== -1) {
+              saveState('Delete connector by selection');
               items.splice(connectorIndex, 1);
             }
             deletingConnector = false;
@@ -765,7 +836,7 @@
         }
       } else {
         rightClickTarget = null;
-        ['Save','Load','Add Colored Box','Add Connector','Delete Connector','Change Background Color','Search'].forEach(text => {
+        ['Save','Load','Add Colored Box','Add Connector','Delete Connector','Change Background Color','Search','Undo'].forEach(text => {
           const li = document.createElement('li'); 
           li.textContent = text;
           li.dataset.action = text.toLowerCase().replace(/ /g,'-');
@@ -825,11 +896,16 @@
         case 'search':
           showSearchBar();
           break;
+        case 'undo':
+          performUndo();
+          break;
       }
     }
 
     /* ==================== BLOCK MANAGEMENT ==================== */
     function addRect(x, y) { 
+      saveState('Add block');
+      
       const modernColors = [
         '#0078d4', '#107c10', '#ffb900', '#d13438', 
         '#8764b8', '#00bcf2', '#038387', '#e3008c',
@@ -850,6 +926,8 @@
     }
 
     function copyBlock(originalBlock) {
+      saveState('Copy block');
+      
       const copiedBlock = {
         id: nextId++,
         type: 'rect',
@@ -867,9 +945,11 @@
     }
     
     function deleteBlock(blockId) {
-      if (!confirm('Are you sure you want to delete this block and all its connections?\n\nThis action cannot be undone.')) {
+      if (!confirm('Are you sure you want to delete this block and all its connections?')) {
         return;
       }
+      
+      saveState('Delete block');
       
       items = items.filter(item => 
         !(item.type === 'connector' && (item.from === blockId || item.to === blockId))
@@ -894,6 +974,7 @@
       document.body.appendChild(input); 
       input.click();
       input.addEventListener('change', ev => { 
+        saveState('Change block color');
         target.color = ev.target.value; 
         draw(); 
         input.remove(); 
@@ -911,6 +992,7 @@
       document.body.appendChild(input); 
       input.click();
       input.addEventListener('change', ev => { 
+        saveState('Change background color');
         backgroundColor = ev.target.value; 
         updateBackgroundColor();
         input.remove(); 
@@ -929,20 +1011,23 @@
     }
 
     function toggleConnectorArrows(target) {
+      saveState('Toggle connector arrows');
       target.hasArrows = (target.hasArrows !== false) ? false : true;
       draw();
     }
 
     function toggleConnectorDashed(target) {
+      saveState('Toggle connector dashed style');
       target.isDashed = !target.isDashed;
       draw();
     }
 
     function deleteConnector(target) {
-      if (!confirm('Are you sure you want to delete this connector?\n\nThis action cannot be undone.')) {
+      if (!confirm('Are you sure you want to delete this connector?')) {
         return;
       }
       
+      saveState('Delete connector');
       const connectorIndex = items.findIndex(item => item.id === target.id);
       if (connectorIndex !== -1) {
         items.splice(connectorIndex, 1);
@@ -1059,8 +1144,16 @@
             }
           });
           
-          hit.richText = editor.innerHTML;
-          hit.text = editor.textContent || editor.innerText;
+          // Check if content actually changed before saving state
+          const newRichText = editor.innerHTML;
+          const newText = editor.textContent || editor.innerText;
+          
+          if (newRichText !== (hit.richText || '') || newText !== (hit.text || '')) {
+            saveState('Edit text content');
+          }
+          
+          hit.richText = newRichText;
+          hit.text = newText;
           editor.remove(); 
           currentEditor = null;
           hideTextFormatMenu();
@@ -1458,6 +1551,10 @@
             updateBackgroundColor();
             updateScaleIndicator();
             nextId = items.reduce((max, i) => Math.max(max, i.id), 0) + 1;
+            
+            // Clear undo history when loading a file
+            clearUndoHistory();
+            
             draw();
             console.log('File loaded successfully');
           } catch (err) {
