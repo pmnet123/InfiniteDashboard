@@ -375,6 +375,9 @@
     // Undo functionality state
     let undoStack = [];
     let maxUndoSteps = 10; // Limit undo history to prevent memory issues
+    
+    // Link click detection state
+    let renderedLinks = []; // Store clickable link areas for hit detection
 
     /* ==================== INITIALIZATION ==================== */
     function initializeApp() {
@@ -428,6 +431,58 @@
     /* ==================== UTILITY FUNCTIONS ==================== */
     function toWorld(cx, cy) { 
       return { x:(cx-originX)/scale, y:(cy-originY)/scale }; 
+    }
+
+    function isValidURL(string) {
+      try {
+        // Check for common URL patterns
+        const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+        const wwwPattern = /^www\.[\da-z\.-]+\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+        
+        // If it starts with http/https, try URL constructor
+        if (string.startsWith('http://') || string.startsWith('https://')) {
+          new URL(string);
+          return true;
+        }
+        
+        // Check for www. pattern
+        if (wwwPattern.test(string)) {
+          return true;
+        }
+        
+        // Check for domain.tld pattern
+        if (urlPattern.test(string)) {
+          return true;
+        }
+        
+        return false;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function makeURLClickable(url) {
+      let finalURL = url;
+      
+      // Add protocol if missing
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        finalURL = 'https://' + url;
+      }
+      
+      return finalURL;
+    }
+
+    function autoLinkText(text) {
+      // URL pattern that matches common URL formats
+      const urlPattern = /(https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.([a-zA-Z]{2,})(\/[^\s]*)?)/gi;
+      
+      return text.replace(urlPattern, (match) => {
+        if (isValidURL(match)) {
+          const clickableURL = makeURLClickable(match);
+          return `<a href="${clickableURL}" target="_blank" rel="noopener noreferrer" style="color: #0066cc; text-decoration: underline;">${match}</a>`;
+        }
+        return match;
+      });
     }
 
     function updateScaleIndicator() {
@@ -671,6 +726,13 @@
       
       const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
       
+      // Check for link clicks first
+      const linkHit = findLinkAt(mx, my);
+      if (linkHit && e.button === 0) {
+        window.open(linkHit.url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      
       if (connecting) {
         const hit = findItem(mx, my);
         if (hit) {
@@ -761,7 +823,13 @@
         return;
       }
       
-      canvas.style.cursor = findEdge(mx, my) ? 'nwse-resize' : 'default';
+      // Set cursor based on what's under the mouse
+      const linkHit = findLinkAt(mx, my);
+      if (linkHit) {
+        canvas.style.cursor = 'pointer';
+      } else {
+        canvas.style.cursor = findEdge(mx, my) ? 'nwse-resize' : 'default';
+      }
     }
 
     function handleCanvasMouseUp() { 
@@ -1080,6 +1148,17 @@
       return null; 
     }
 
+    function findLinkAt(x, y) {
+      // Check if the point is within any rendered link bounds
+      for (let link of renderedLinks) {
+        if (x >= link.x && x <= link.x + link.width &&
+            y >= link.y && y <= link.y + link.height) {
+          return link;
+        }
+      }
+      return null;
+    }
+
     /* ==================== TEXT EDITING ==================== */
     function createTextEditor(hit) {
       const existing = document.querySelector('.block-input'); 
@@ -1096,6 +1175,11 @@
       editor.style.fontSize = (18 * scale) + 'px';
       editor.innerHTML = hit.richText || hit.text || '';
       
+      // Auto-link any URLs that might be in existing text
+      setTimeout(() => {
+        autoLinkURLsInEditor(editor);
+      }, 50);
+      
       const spans = editor.querySelectorAll('span[style*="font-size"]');
       spans.forEach(span => {
         const currentSize = parseInt(span.style.fontSize);
@@ -1109,6 +1193,13 @@
       editor.addEventListener('keyup', handleTextSelection);
       editor.addEventListener('contextmenu', handleTextContextMenu);
       editor.addEventListener('blur', (e) => saveTextEditor(e, hit, editor));
+      
+      // Handle URL auto-linking on paste and input
+      editor.addEventListener('paste', handleTextPaste);
+      editor.addEventListener('input', handleTextInput);
+      
+      // Handle link clicks during editing
+      editor.addEventListener('click', handleEditorClick);
       
       document.body.appendChild(editor); 
       editor.focus();
@@ -1160,6 +1251,169 @@
           draw(); 
         }
       }, 150);
+    }
+
+    function handleTextPaste(e) {
+      // Let the paste happen first, then auto-link URLs
+      setTimeout(() => {
+        autoLinkURLsInEditor(e.target);
+      }, 10);
+    }
+
+    function handleTextInput(e) {
+      // Debounce auto-linking to avoid performance issues
+      clearTimeout(e.target.autoLinkTimer);
+      e.target.autoLinkTimer = setTimeout(() => {
+        autoLinkURLsInEditor(e.target);
+      }, 500);
+    }
+
+    function autoLinkURLsInEditor(editor) {
+      if (!editor) return;
+      
+      // Save current cursor position
+      const selection = window.getSelection();
+      let range = null;
+      let offset = 0;
+      
+      if (selection.rangeCount > 0) {
+        range = selection.getRangeAt(0);
+        offset = range.startOffset;
+      }
+      
+      // Get all text nodes that might contain URLs
+      const walker = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+      
+      const textNodes = [];
+      let node;
+      while (node = walker.nextNode()) {
+        textNodes.push(node);
+      }
+      
+      // Process text nodes and replace URLs
+      let cursorAdjustment = 0;
+      textNodes.forEach(textNode => {
+        const originalText = textNode.textContent;
+        const linkedText = autoLinkText(originalText);
+        
+        if (linkedText !== originalText) {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = linkedText;
+          
+          // Replace the text node with the new content
+          const fragment = document.createDocumentFragment();
+          while (tempDiv.firstChild) {
+            fragment.appendChild(tempDiv.firstChild);
+          }
+          
+          const parent = textNode.parentNode;
+          parent.insertBefore(fragment, textNode);
+          parent.removeChild(textNode);
+          
+          // Adjust cursor position if this was the node being edited
+          if (range && range.startContainer === textNode) {
+            cursorAdjustment = linkedText.length - originalText.length;
+          }
+        }
+      });
+      
+      // Restore cursor position if possible
+      if (range && selection.rangeCount > 0) {
+        try {
+          const newRange = document.createRange();
+          const walker = document.createTreeWalker(
+            editor,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+          );
+          
+          let textNode = walker.nextNode();
+          if (textNode && offset <= textNode.textContent.length) {
+            newRange.setStart(textNode, Math.min(offset, textNode.textContent.length));
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+        } catch (e) {
+          // If cursor restoration fails, just place it at the end
+          editor.focus();
+        }
+      }
+    }
+
+    function handleEditorClick(e) {
+      // Check if the click target is a link or inside a link
+      let target = e.target;
+      let linkElement = null;
+      
+      // Walk up the DOM tree to find a link
+      while (target && target !== e.currentTarget) {
+        if (target.tagName === 'A' && target.href) {
+          linkElement = target;
+          break;
+        }
+        target = target.parentElement;
+      }
+      
+      if (linkElement) {
+        // Check if this is a Ctrl+click or if user specifically wants to open the link
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(linkElement.href, '_blank', 'noopener,noreferrer');
+        } else {
+          // For regular clicks, show a tooltip or hint
+          showLinkHint(linkElement, e);
+        }
+      }
+    }
+
+    function showLinkHint(linkElement, event) {
+      // Remove any existing hint
+      const existingHint = document.getElementById('link-hint');
+      if (existingHint) {
+        existingHint.remove();
+      }
+      
+      // Create a temporary tooltip
+      const hint = document.createElement('div');
+      hint.id = 'link-hint';
+      hint.innerHTML = `
+        <div style="
+          position: fixed;
+          background: rgba(0, 0, 0, 0.9);
+          color: white;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          z-index: 10000;
+          pointer-events: none;
+          white-space: nowrap;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        ">
+          Hold Ctrl and click to open: ${linkElement.textContent}
+        </div>
+      `;
+      
+      // Position the hint near the mouse cursor
+      const hintDiv = hint.firstElementChild;
+      hintDiv.style.left = (event.clientX + 10) + 'px';
+      hintDiv.style.top = (event.clientY - 40) + 'px';
+      
+      document.body.appendChild(hint);
+      
+      // Remove hint after 3 seconds
+      setTimeout(() => {
+        if (hint && hint.parentNode) {
+          hint.remove();
+        }
+      }, 3000);
     }
 
     /* ==================== TEXT FORMATTING ==================== */
@@ -1630,6 +1884,12 @@
               if (parent.tagName === 'B' || parent.tagName === 'STRONG') style.bold = true;
               if (parent.tagName === 'I' || parent.tagName === 'EM') style.italic = true;
               if (parent.tagName === 'U') style.underline = true;
+              if (parent.tagName === 'A') {
+                style.isLink = true;
+                style.linkURL = parent.href;
+                style.color = parent.style.color || '#0066cc';
+                style.underline = true;
+              }
               if (parent.style.color) style.color = parent.style.color;
               if (parent.style.fontSize) style.fontSize = parent.style.fontSize;
               if (parent.style.fontFamily) {
@@ -1667,11 +1927,24 @@
               const metrics = ctx.measureText(testLine);
               
               if (metrics.width > maxWidth && currentLine.trim()) {
+                const lineWidth = ctx.measureText(currentLine).width;
                 ctx.fillText(currentLine, currentX, currentY + maxLineHeight);
+                
+                // Store link bounds if this is a link
+                if (style.isLink && style.linkURL) {
+                  renderedLinks.push({
+                    x: currentX,
+                    y: currentY,
+                    width: lineWidth,
+                    height: maxLineHeight,
+                    url: style.linkURL
+                  });
+                }
+                
                 if (style.underline) {
                   ctx.beginPath();
                   ctx.moveTo(currentX, currentY + maxLineHeight + 2);
-                  ctx.lineTo(currentX + ctx.measureText(currentLine).width, currentY + maxLineHeight + 2);
+                  ctx.lineTo(currentX + lineWidth, currentY + maxLineHeight + 2);
                   ctx.strokeStyle = style.color || '#000';
                   ctx.lineWidth = 1;
                   ctx.stroke();
@@ -1688,11 +1961,24 @@
             }
             
             if (currentLine.trim() && currentY <= y + maxHeight) {
+              const lineWidth = ctx.measureText(currentLine).width;
               ctx.fillText(currentLine, currentX, currentY + maxLineHeight);
+              
+              // Store link bounds if this is a link
+              if (style.isLink && style.linkURL) {
+                renderedLinks.push({
+                  x: currentX,
+                  y: currentY,
+                  width: lineWidth,
+                  height: maxLineHeight,
+                  url: style.linkURL
+                });
+              }
+              
               if (style.underline) {
                 ctx.beginPath();
                 ctx.moveTo(currentX, currentY + maxLineHeight + 2);
-                ctx.lineTo(currentX + ctx.measureText(currentLine).width, currentY + maxLineHeight + 2);
+                ctx.lineTo(currentX + lineWidth, currentY + maxLineHeight + 2);
                 ctx.strokeStyle = style.color || '#000';
                 ctx.lineWidth = 1;
                 ctx.stroke();
@@ -1727,6 +2013,10 @@
       ctx.clearRect(0,0,canvas.width,canvas.height); 
       ctx.translate(originX,originY); 
       ctx.scale(scale,scale); 
+      
+      // Clear link bounds for hit detection
+      renderedLinks = [];
+      
       drawGrid(); 
       
       // Draw connectors
