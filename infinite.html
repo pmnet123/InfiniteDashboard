@@ -383,8 +383,8 @@
     let lastRightClickTime = 0;
     let lastRightClickX = 0;
     let lastRightClickY = 0;
-    const doubleClickThreshold = 100; // milliseconds
-    const doubleClickDistance = 10; // pixels
+    const doubleClickThreshold = 300; // milliseconds
+    const doubleClickDistance = 20; // pixels
     let contextMenuTimeout = null;
 
     /* ==================== INITIALIZATION ==================== */
@@ -531,6 +531,12 @@
       scale = newScale;
       
       updateScaleIndicator();
+      draw();
+    }
+    
+    function scrollViewport(deltaX, deltaY) {
+      originX += deltaX;
+      originY += deltaY;
       draw();
     }
     
@@ -761,6 +767,21 @@
       } else if (e.key === 'z' && !currentEditor && !e.ctrlKey) {
         e.preventDefault();
         resetZoom();
+      } else if (!currentEditor && !searchContainer.classList.contains('visible')) {
+        // Arrow key navigation when not in text editor or search
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          scrollViewport(0, canvas.height * 0.2);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          scrollViewport(0, -canvas.height * 0.2);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          scrollViewport(canvas.width * 0.2, 0);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          scrollViewport(-canvas.width * 0.2, 0);
+        }
       }
     }
 
