@@ -489,6 +489,25 @@
       scaleIndicator.textContent = Math.round(scale * 100) + '%';
     }
     
+    function resetZoom() {
+      // Calculate the current center point in world coordinates
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const worldCenterX = (centerX - originX) / scale;
+      const worldCenterY = (centerY - originY) / scale;
+      
+      // Reset scale to 1
+      const newScale = 1;
+      
+      // Adjust origin to keep the same world point at screen center
+      originX = centerX - worldCenterX * newScale;
+      originY = centerY - worldCenterY * newScale;
+      scale = newScale;
+      
+      updateScaleIndicator();
+      draw();
+    }
+    
     function updateBackgroundColor() {
       document.body.style.background = backgroundColor;
       canvas.style.background = backgroundColor;
@@ -713,6 +732,9 @@
       } else if (e.ctrlKey && e.key === 'z' && !currentEditor) {
         e.preventDefault();
         performUndo();
+      } else if (e.key === 'z' && !currentEditor && !e.ctrlKey) {
+        e.preventDefault();
+        resetZoom();
       }
     }
 
