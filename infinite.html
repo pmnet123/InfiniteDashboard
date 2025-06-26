@@ -378,6 +378,14 @@
     
     // Link click detection state
     let renderedLinks = []; // Store clickable link areas for hit detection
+    
+    // Right double-click detection state
+    let lastRightClickTime = 0;
+    let lastRightClickX = 0;
+    let lastRightClickY = 0;
+    const doubleClickThreshold = 100; // milliseconds
+    const doubleClickDistance = 10; // pixels
+    let contextMenuTimeout = null;
 
     /* ==================== INITIALIZATION ==================== */
     function initializeApp() {
@@ -502,6 +510,24 @@
       // Adjust origin to keep the same world point at screen center
       originX = centerX - worldCenterX * newScale;
       originY = centerY - worldCenterY * newScale;
+      scale = newScale;
+      
+      updateScaleIndicator();
+      draw();
+    }
+    
+    function zoomToLevel(targetScale, clientX, clientY) {
+      // Clamp the target scale to valid range
+      const newScale = Math.min(Math.max(0.2, targetScale), 5);
+      
+      // Calculate the world coordinates of the click point
+      const rect = canvas.getBoundingClientRect();
+      const cx = clientX - rect.left;
+      const cy = clientY - rect.top;
+      
+      // Adjust origin to keep the clicked point at the same screen position
+      originX = cx - (cx - originX) * (newScale / scale);
+      originY = cy - (cy - originY) * (newScale / scale);
       scale = newScale;
       
       updateScaleIndicator();
@@ -739,10 +765,43 @@
     }
 
     function handleCanvasMouseDown(e) {
+      // Handle right double-click detection
       if (e.button === 2) {
+        const currentTime = Date.now();
+        const distance = Math.sqrt(
+          Math.pow(e.clientX - lastRightClickX, 2) + 
+          Math.pow(e.clientY - lastRightClickY, 2)
+        );
+        
+        if (currentTime - lastRightClickTime < doubleClickThreshold && distance < doubleClickDistance) {
+          // Right double-click detected - zoom to 20%
+          zoomToLevel(0.2, e.clientX, e.clientY);
+          // Clear any pending context menu
+          if (contextMenuTimeout) {
+            clearTimeout(contextMenuTimeout);
+            contextMenuTimeout = null;
+          }
+          // Hide context menu if it's showing
+          hideContextMenu();
+          // Reset to prevent triple-click issues
+          lastRightClickTime = 0;
+          return;
+        }
+        
+        // Store this right click for potential double-click
+        lastRightClickTime = currentTime;
+        lastRightClickX = e.clientX;
+        lastRightClickY = e.clientY;
+        
         const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
         const hit = findItem(mx, my);
-        showContextMenu(e.clientX, e.clientY, mx, my, hit);
+        
+        // Delay showing context menu to allow for double-click detection
+        contextMenuTimeout = setTimeout(() => {
+          showContextMenu(e.clientX, e.clientY, mx, my, hit);
+          contextMenuTimeout = null;
+        }, doubleClickThreshold);
+        
         return;
       }
       
@@ -877,9 +936,14 @@
     function handleCanvasDoubleClick(e) {
       const {x:mx,y:my} = toWorld(e.clientX, e.clientY);
       const hit = items.slice().reverse().find(it=>it.type==='rect'&&mx>=it.x&&mx<=it.x+it.w&&my>=it.y&&my<=it.y+it.h);
-      if (!hit) return;
       
-      createTextEditor(hit);
+      if (hit) {
+        // Double left click on a block = open text editor
+        createTextEditor(hit);
+      } else {
+        // Double left click on empty space = zoom to 100%
+        zoomToLevel(1, e.clientX, e.clientY);
+      }
     }
 
     function handleContextMenuClick(e) {
