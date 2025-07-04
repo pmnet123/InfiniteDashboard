@@ -553,6 +553,38 @@
       return [item.x + item.w/2, item.y + item.h/2];
     }
 
+    function calculateDistance(x1, y1, x2, y2) {
+      return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    }
+
+    function isOriginBlock(block) {
+      return items.some(item => item.type === 'connector' && item.from === block.id);
+    }
+
+    function getOriginBlocks() {
+      return items.filter(item => item.type === 'rect' && isOriginBlock(item));
+    }
+
+    function findClosestOriginBlock(x, y) {
+      const originBlocks = getOriginBlocks();
+      if (originBlocks.length === 0) return null;
+      
+      let closest = null;
+      let minDistance = Infinity;
+      
+      for (const block of originBlocks) {
+        const [centerX, centerY] = getCenter(block);
+        const distance = calculateDistance(x, y, centerX, centerY);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          closest = block;
+        }
+      }
+      
+      return closest;
+    }
+
     function adjustBrightness(color, percent) {
       const num = parseInt(color.replace("#",""), 16);
       const amt = Math.round(2.55 * percent);
@@ -1095,14 +1127,30 @@
       ];
       const randomColor = modernColors[Math.floor(Math.random() * modernColors.length)];
       
-      items.push({ 
+      const newBlock = { 
         id: nextId++, 
         type: 'rect', 
         x, y, w:150, h:100, 
         color: randomColor, 
         text: '', 
         richText: '' 
-      }); 
+      };
+      
+      items.push(newBlock); 
+      
+      // Auto-connect from closest origin block if one exists
+      const closestOriginBlock = findClosestOriginBlock(x, y);
+      if (closestOriginBlock) {
+        items.push({
+          id: nextId++,
+          type: 'connector',
+          from: closestOriginBlock.id,
+          to: newBlock.id,
+          hasArrows: true,
+          isDashed: false
+        });
+      }
+      
       draw(); 
     }
 
