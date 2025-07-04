@@ -387,6 +387,9 @@
     const doubleClickDistance = 20; // pixels
     let contextMenuTimeout = null;
 
+    // Current file handle for persistent save location
+    let currentFileHandle = null;
+
     /* ==================== INITIALIZATION ==================== */
     function initializeApp() {
       resizeCanvas();
@@ -995,14 +998,14 @@
       if (hit) {
         rightClickTarget = hit;
         if (hit.type === 'connector') {
-          ['Toggle Arrows','Toggle Dashed','Delete Connector','Save','Load'].forEach(text => {
+          ['Toggle Arrows','Toggle Dashed','Delete Connector','Save','Save As','Load'].forEach(text => {
             const li = document.createElement('li'); 
             li.textContent = text;
             li.dataset.action = text.toLowerCase().replace(/ /g,'-');
             menuList.appendChild(li);
           });
         } else {
-          ['Change Color','Copy Block','Delete Block','Save','Load'].forEach(text => {
+          ['Change Color','Copy Block','Delete Block','Save','Save As','Load'].forEach(text => {
             const li = document.createElement('li'); 
             li.textContent = text;
             li.dataset.action = text.toLowerCase().replace(/ /g,'-');
@@ -1011,7 +1014,7 @@
         }
       } else {
         rightClickTarget = null;
-        ['Save','Load','Add Colored Box','Add Connector','Delete Connector','Change Background Color','Search','Undo'].forEach(text => {
+        ['Save','Save As','Load','Add Colored Box','Add Connector','Delete Connector','Change Background Color','Search','Undo'].forEach(text => {
           const li = document.createElement('li'); 
           li.textContent = text;
           li.dataset.action = text.toLowerCase().replace(/ /g,'-');
@@ -1034,6 +1037,9 @@
       switch(action) {
         case 'save':
           await saveData();
+          break;
+        case 'save-as':
+          await saveAsData();
           break;
         case 'load':
           loadData();
@@ -1835,20 +1841,26 @@
         
         const data = JSON.stringify({ items, originX, originY, scale, backgroundColor });
         
-        let fileHandle;
-        try {
-          fileHandle = await window.showSaveFilePicker({
-            suggestedName: 'dashboard.json',
-            types: [{
-              description: 'JSON files',
-              accept: { 'application/json': ['.json'] }
-            }]
-          });
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            return;
+        let fileHandle = currentFileHandle;
+        
+        // If we don't have a stored file handle, show the save dialog
+        if (!fileHandle) {
+          try {
+            fileHandle = await window.showSaveFilePicker({
+              suggestedName: 'dashboard.json',
+              types: [{
+                description: 'JSON files',
+                accept: { 'application/json': ['.json'] }
+              }]
+            });
+            // Store the new file handle for future saves
+            currentFileHandle = fileHandle;
+          } catch (err) {
+            if (err.name === 'AbortError') {
+              return;
+            }
+            throw new Error('File picker failed: ' + err.message);
           }
-          throw new Error('File picker failed: ' + err.message);
         }
         
         let finalData = data;
@@ -1869,64 +1881,159 @@
       }
     }
 
-    function loadData() {
-      const input = document.createElement('input');
-      input.type = 'file'; 
-      input.accept = 'application/json';
-      input.style.display = 'none'; 
-      document.body.appendChild(input);
-      
-      input.onchange = async evt => {
-        const file = input.files[0];
-        if (!file) return;
+    async function saveAsData() {
+      try {
+        if (!('showSaveFilePicker' in window)) {
+          alert('File picker not supported in this browser. Please use Chrome, Edge, or Safari.');
+          return;
+        }
+
+        const password = prompt('Enter password for encryption (leave blank for no encryption):');
+        if (password === null) {
+          return;
+        }
         
-        const reader = new FileReader();
-        reader.onload = async evt => {
-          try {
-            const fileContent = evt.target.result;
-            let obj;
-            
-            if (fileContent.startsWith('ENCRYPTED:')) {
-              const password = prompt('Enter password to decrypt the file:');
-              if (!password) {
-                alert('Password required to decrypt file.');
-                return;
-              }
-              try {
-                const decryptedData = await decryptData(fileContent, password.trim());
-                obj = JSON.parse(decryptedData);
-              } catch (decryptErr) {
-                console.error('Decryption failed:', decryptErr);
-                alert('Decryption failed. Wrong password or corrupted file.');
-                return;
-              }
-            } else {
-              obj = JSON.parse(fileContent);
-            }
-            
-            items = obj.items || [];
-            originX = obj.originX || 0;
-            originY = obj.originY || 0;
-            scale = obj.scale || 1;
-            backgroundColor = obj.backgroundColor || '#ffffff';
-            updateBackgroundColor();
-            updateScaleIndicator();
-            nextId = items.reduce((max, i) => Math.max(max, i.id), 0) + 1;
-            
-            // Clear undo history when loading a file
-            clearUndoHistory();
-            
-            draw();
-            console.log('File loaded successfully');
-          } catch (err) {
-            console.error('Invalid file:', err);
-            alert('Invalid file format.');
+        const data = JSON.stringify({ items, originX, originY, scale, backgroundColor });
+        
+        let fileHandle;
+        try {
+          // Always show save dialog for Save As
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: 'dashboard.json',
+            types: [{
+              description: 'JSON files',
+              accept: { 'application/json': ['.json'] }
+            }]
+          });
+          // Update the current file handle to the new location
+          currentFileHandle = fileHandle;
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            return;
           }
-        };
-        reader.readAsText(file);
-        input.remove();
+          throw new Error('File picker failed: ' + err.message);
+        }
+        
+        let finalData = data;
+        let isEncrypted = false;
+        if (password && password.trim()) {
+          finalData = await encryptData(data, password.trim());
+          isEncrypted = true;
+        }
+        
+        const writable = await fileHandle.createWritable();
+        await writable.write(finalData);
+        await writable.close();
+        console.log(`File saved as new location${isEncrypted ? ' (encrypted)' : ' (unencrypted)'}`);
+        
+      } catch (err) {
+        console.error('Save As operation failed:', err);
+        alert('Save As failed: ' + err.message);
+      }
+    }
+
+    async function loadData() {
+      try {
+        let fileHandle;
+        let file;
+        
+        // Try to use modern File System Access API
+        if ('showOpenFilePicker' in window) {
+          try {
+            [fileHandle] = await window.showOpenFilePicker({
+              types: [{
+                description: 'JSON files',
+                accept: { 'application/json': ['.json'] }
+              }]
+            });
+            file = await fileHandle.getFile();
+          } catch (err) {
+            if (err.name === 'AbortError') {
+              return;
+            }
+            throw new Error('File picker failed: ' + err.message);
+          }
+        } else {
+          // Fallback for browsers that don't support File System Access API
+          const input = document.createElement('input');
+          input.type = 'file'; 
+          input.accept = 'application/json';
+          input.style.display = 'none'; 
+          document.body.appendChild(input);
+          
+          return new Promise((resolve) => {
+            input.onchange = async evt => {
+              file = input.files[0];
+              if (!file) {
+                input.remove();
+                resolve();
+                return;
+              }
+              
+              await processLoadedFile(file, null);
+              input.remove();
+              resolve();
+            };
+            input.click();
+          });
+        }
+        
+        await processLoadedFile(file, fileHandle);
+        
+      } catch (err) {
+        console.error('Load operation failed:', err);
+        alert('Load failed: ' + err.message);
+      }
+    }
+    
+    async function processLoadedFile(file, fileHandle) {
+      const reader = new FileReader();
+      reader.onload = async evt => {
+        try {
+          const fileContent = evt.target.result;
+          let obj;
+          
+          if (fileContent.startsWith('ENCRYPTED:')) {
+            const password = prompt('Enter password to decrypt the file:');
+            if (!password) {
+              alert('Password required to decrypt file.');
+              return;
+            }
+            try {
+              const decryptedData = await decryptData(fileContent, password.trim());
+              obj = JSON.parse(decryptedData);
+            } catch (decryptErr) {
+              console.error('Decryption failed:', decryptErr);
+              alert('Decryption failed. Wrong password or corrupted file.');
+              return;
+            }
+          } else {
+            obj = JSON.parse(fileContent);
+          }
+          
+          items = obj.items || [];
+          originX = obj.originX || 0;
+          originY = obj.originY || 0;
+          scale = obj.scale || 1;
+          backgroundColor = obj.backgroundColor || '#ffffff';
+          updateBackgroundColor();
+          updateScaleIndicator();
+          nextId = items.reduce((max, i) => Math.max(max, i.id), 0) + 1;
+          
+          // Store the file handle for future saves
+          currentFileHandle = fileHandle;
+          
+          // Clear undo history when loading a file
+          clearUndoHistory();
+          
+          draw();
+          console.log('File loaded successfully');
+        } catch (err) {
+          console.error('Invalid file:', err);
+          alert('Invalid file format.');
+        }
       };
-      input.click();
+      reader.readAsText(file);
     }
 
     /* ==================== RENDERING ==================== */
