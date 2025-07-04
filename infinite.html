@@ -802,6 +802,12 @@
       } else if (e.key === 'z' && !currentEditor && !e.ctrlKey) {
         e.preventDefault();
         resetZoom();
+      } else if (e.key === 'b' && !currentEditor && !searchContainer.classList.contains('visible')) {
+        e.preventDefault();
+        // Add block at center of current view
+        const centerX = (canvas.width / 2 - originX) / scale;
+        const centerY = (canvas.height / 2 - originY) / scale;
+        addRect(centerX, centerY);
       } else if (!currentEditor && !searchContainer.classList.contains('visible')) {
         // Arrow key navigation when not in text editor or search
         if (e.key === 'ArrowUp') {
